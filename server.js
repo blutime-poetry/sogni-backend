@@ -1,41 +1,46 @@
 
 const express = require('express');
-const cors = require('cors');
 const fs = require('fs');
-const path = require('path');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+
 const app = express();
-
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-const POESIE_FILE = path.join(__dirname, 'poesie.json');
+const FILE_PATH = 'poesie.json';
 
-// Assicura che il file esista
-if (!fs.existsSync(POESIE_FILE)) fs.writeFileSync(POESIE_FILE, '[]');
+// Rotta per ricevere poesie
+app.post('/api/poesie', (req, res) => {
+  const nuovaPoesia = req.body;
+  if (!nuovaPoesia || !nuovaPoesia.testo) {
+    return res.status(400).json({ message: "Poesia mancante" });
+  }
 
-// Rotta di test
-app.get('/api/status', (req, res) => {
-  res.json({ status: 'online', message: 'API funzionante!', endpoints: { salva: 'POST /api/poesia', lista: 'GET /api/poesie' } });
+  let poesie = [];
+  if (fs.existsSync(FILE_PATH)) {
+    poesie = JSON.parse(fs.readFileSync(FILE_PATH));
+  }
+
+  poesie.unshift({
+    testo: nuovaPoesia.testo.trim(),
+    data: new Date().toISOString()
+  });
+
+  fs.writeFileSync(FILE_PATH, JSON.stringify(poesie, null, 2));
+  res.status(201).json({ message: "Poesia salvata" });
 });
 
-// Rotta per salvare una poesia
-app.post('/api/poesia', (req, res) => {
-  const { nome, testo } = req.body;
-  if (!testo) return res.status(400).json({ error: 'Testo mancante' });
-
-  const poesie = JSON.parse(fs.readFileSync(POESIE_FILE));
-  poesie.unshift({ nome: nome || 'Anonimo', testo, data: new Date().toISOString() });
-  fs.writeFileSync(POESIE_FILE, JSON.stringify(poesie, null, 2));
-  res.json({ success: true });
-});
-
-// Rotta per leggere le poesie
+// Rotta per leggere tutte le poesie
 app.get('/api/poesie', (req, res) => {
-  const poesie = JSON.parse(fs.readFileSync(POESIE_FILE));
+  if (!fs.existsSync(FILE_PATH)) {
+    return res.json([]);
+  }
+  const poesie = JSON.parse(fs.readFileSync(FILE_PATH));
   res.json(poesie);
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Server attivo sulla porta ${PORT}`);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server attivo sulla porta ${port}`);
 });
