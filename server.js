@@ -1,46 +1,69 @@
 
-const express = require('express');
-const fs = require('fs');
-const cors = require('cors');
-const bodyParser = require('body-parser');
+const express = require("express");
+const bodyParser = require("body-parser");
+const fs = require("fs");
+const path = require("path");
+const PDFDocument = require("pdfkit");
+const axios = require("axios");
+const cors = require("cors");
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-const FILE_PATH = 'poesie.json';
+async function downloadImage(imageUrl, outputPath) {
+  const response = await axios.get(imageUrl, { responseType: "arraybuffer" });
+  fs.writeFileSync(outputPath, response.data);
+}
 
-// Rotta per ricevere poesie
-app.post('/api/poesie', (req, res) => {
-  const nuovaPoesia = req.body;
-  if (!nuovaPoesia || !nuovaPoesia.testo) {
-    return res.status(400).json({ message: "Poesia mancante" });
+app.post("/pdf", async (req, res) => {
+  const testo = req.body.testo;
+  const imageUrl = req.body.img;
+
+  if (!testo || !imageUrl) {
+    return res.status(400).send("Dati mancanti");
   }
 
-  let poesie = [];
-  if (fs.existsSync(FILE_PATH)) {
-    poesie = JSON.parse(fs.readFileSync(FILE_PATH));
+  const doc = new PDFDocument();
+  const timestamp = Date.now();
+  const pdfPath = path.join(__dirname, `poesia_${timestamp}.pdf`);
+  const imagePath = path.join(__dirname, `immagine_${timestamp}.png`);
+
+  try {
+    await downloadImage(imageUrl, imagePath);
+
+    const writeStream = fs.createWriteStream(pdfPath);
+    doc.pipe(writeStream);
+
+    doc.font("Times-Roman").fontSize(14);
+    testo.split("\n").forEach(line => {
+      doc.text(line, { align: "left" });
+    });
+
+    doc.moveDown();
+    doc.image(imagePath, { fit: [500, 300], align: "center" });
+
+    doc.end();
+
+    writeStream.on("finish", () => {
+      res.sendFile(pdfPath, err => {
+        if (!err) {
+          fs.unlinkSync(pdfPath);
+          fs.unlinkSync(imagePath);
+        }
+      });
+    });
+  } catch (err) {
+    console.error("Errore generazione PDF:", err);
+    res.status(500).send("Errore durante la generazione del PDF.");
   }
-
-  poesie.unshift({
-    testo: nuovaPoesia.testo.trim(),
-    data: new Date().toISOString()
-  });
-
-  fs.writeFileSync(FILE_PATH, JSON.stringify(poesie, null, 2));
-  res.status(201).json({ message: "Poesia salvata" });
 });
 
-// Rotta per leggere tutte le poesie
-app.get('/api/poesie', (req, res) => {
-  if (!fs.existsSync(FILE_PATH)) {
-    return res.json([]);
-  }
-  const poesie = JSON.parse(fs.readFileSync(FILE_PATH));
-  res.json(poesie);
+app.get("/", (req, res) => {
+  res.send("Server PDF attivo.");
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server attivo sulla porta ${port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server in ascolto sulla porta ${PORT}`);
 });
