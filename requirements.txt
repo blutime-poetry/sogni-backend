@@ -1,5 +1,2 @@
-
 flask
-fpdf
-requests
-openai
+flask-cors
